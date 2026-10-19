@@ -302,6 +302,89 @@
       searchInput.focus();
     });
 
+    // ZN VISUALS - Photo Viewer
+(() => {
+  const viewer = document.getElementById('photoViewer');
+  const viewerImage = document.getElementById('viewerImage');
+  const closeBtn = document.getElementById('viewerClose');
+  const prevBtn = document.getElementById('viewerPrev');
+  const nextBtn = document.getElementById('viewerNext');
+  const counter = document.getElementById('viewerCount');
+
+  if (!viewer || !viewerImage) return;
+
+  let photos = [];
+  let currentIndex = 0;
+  let touchStartX = 0;
+
+  function collectPhotos() {
+    photos = Array.from(document.querySelectorAll(
+      '.gallery .photo-card img'
+    )).filter(img => img.src);
+
+    return photos;
+  }
+
+  function showPhoto(index) {
+    collectPhotos();
+    if (!photos.length) return;
+
+    currentIndex = (index + photos.length) % photos.length;
+    const photo = photos[currentIndex];
+
+    viewerImage.src = photo.currentSrc || photo.src;
+    viewerImage.alt = photo.alt || 'ZN VISUALS photograph';
+    counter.textContent = `${currentIndex + 1} / ${photos.length}`;
+
+    viewer.classList.add('active');
+    viewer.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeViewer() {
+    viewer.classList.remove('active');
+    viewer.setAttribute('aria-hidden', 'true');
+    viewerImage.src = '';
+    document.body.style.overflow = '';
+  }
+
+  document.addEventListener('click', event => {
+    const img = event.target.closest('.gallery .photo-card img');
+    if (!img) return;
+
+    event.preventDefault();
+    collectPhotos();
+    const index = photos.indexOf(img);
+    showPhoto(index >= 0 ? index : 0);
+  });
+
+  closeBtn.addEventListener('click', closeViewer);
+  prevBtn.addEventListener('click', () => showPhoto(currentIndex - 1));
+  nextBtn.addEventListener('click', () => showPhoto(currentIndex + 1));
+
+  viewer.addEventListener('click', event => {
+    if (event.target === viewer) closeViewer();
+  });
+
+  document.addEventListener('keydown', event => {
+    if (!viewer.classList.contains('active')) return;
+
+    if (event.key === 'Escape') closeViewer();
+    if (event.key === 'ArrowLeft') showPhoto(currentIndex - 1);
+    if (event.key === 'ArrowRight') showPhoto(currentIndex + 1);
+  });
+
+  viewer.addEventListener('touchstart', event => {
+    touchStartX = event.changedTouches[0].screenX;
+  }, { passive: true });
+
+  viewer.addEventListener('touchend', event => {
+    const diff = event.changedTouches[0].screenX - touchStartX;
+    if (Math.abs(diff) > 60) {
+      showPhoto(currentIndex + (diff < 0 ? 1 : -1));
+    }
+  }, { passive: true });
+})();
     // Assistant UI. This intentionally does not pretend to be connected to ChatGPT.
     const assistantPanel = document.getElementById('assistant-panel');
     function openAssistant() {
