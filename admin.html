@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080808">
+<title>ZN VISUALS — Admin</title>
+<style>
+:root{color-scheme:dark;--bg:#080808;--panel:#131313;--line:#333;--muted:#aaa}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f5f5f5;font:15px/1.5 Arial,sans-serif}
+main{width:min(760px,calc(100% - 28px));margin:36px auto 70px}.brand{letter-spacing:.18em;font-size:12px;color:#bbb}
+h1{font-size:clamp(30px,8vw,52px);line-height:1;margin:18px 0}p{color:var(--muted)}.card{border:1px solid var(--line);background:var(--panel);padding:22px;margin:18px 0}
+label{display:block;font-size:12px;color:#ccc;margin:14px 0 6px}input,button{font:inherit}input[type=email],input[type=password],input[type=text],select,input[type=file]{width:100%;padding:12px;background:#080808;border:1px solid #444;color:#fff}
+button,.btn{display:inline-block;padding:12px 16px;background:#f3f3f3;color:#080808;border:1px solid #f3f3f3;cursor:pointer;text-decoration:none;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-top:14px}
+button.secondary,.btn.secondary{background:transparent;color:#eee;border-color:#555}.danger{background:#1b0808;color:#ffbcbc;border-color:#733}
+.status{padding:12px;background:#1d1d1d;border-left:3px solid #aaa;margin:14px 0;white-space:pre-wrap;font-size:13px}
+.hidden{display:none!important}.photo{display:flex;gap:14px;align-items:center;border-top:1px solid #292929;padding:12px 0}.photo img{width:84px;height:68px;object-fit:cover;filter:grayscale(100%)}.photo-info{flex:1;min-width:0}.photo-info strong{display:block}.photo-info small{color:#aaa}
+.toplinks{display:flex;gap:10px;flex-wrap:wrap}.warning{font-size:12px;color:#d6c9a8}
+</style>
+</head>
+<body>
+<main>
+<div class="brand">ZN / VISUALS — PRIVATE AREA</div>
+<h1>Admin Panel<span style="color:#888">.</span></h1>
+<p>Sign in with the one account you have authorized to manage the gallery.</p>
+<div class="toplinks"><a class="btn secondary" href="index.html">← View website</a></div>
+<div id="status" class="status">Setup needed: add your Supabase project URL and anon key in this file, then configure the SQL policies from README.md.</div>
+
+<section class="card" id="setup-warning">
+<strong>Before using this panel</strong>
+<p class="warning">This page is not secure by itself. Security comes from Supabase Auth plus the database/storage policies in <code>supabase_setup.sql</code>. Never put a Supabase service-role key in this website.</p>
+</section>
+
+<section class="card" id="login-card">
+<h2>Admin login</h2>
+<form id="login-form">
+<label for="email">Admin email</label><input id="email" type="email" autocomplete="username" required>
+<label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required>
+<button type="submit">Sign in</button>
+</form>
+<button class="secondary" id="logout" type="button" hidden>Sign out</button>
+</section>
+
+<section class="card hidden" id="upload-card">
+<h2>Upload a photograph</h2>
+<form id="upload-form">
+<label for="title">Photo title</label><input id="title" type="text" maxlength="100" required placeholder="e.g. Rainy Evening">
+<label for="category">Category</label><input id="category" type="text" maxlength="60" placeholder="e.g. Street / Portrait / Nature">
+<label for="file">Image file</label><input id="file" type="file" accept="image/jpeg,image/png,image/webp" required>
+<button type="submit">Upload photo</button>
+</form>
+<p class="warning">Use JPG, PNG, or WebP images. Keep files reasonably sized for mobile visitors.</p>
+</section>
+
+<section class="card hidden" id="gallery-card">
+<h2>Manage photographs</h2>
+<p>Deleting a photo removes its gallery record and stored image.</p>
+<div id="photo-list"></div>
+</section>
+</main>
+<script type="module">
+const SUPABASE_URL = 'https://jtqkszaetgdczbhreiyw.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_oLXUazLwJjrYWpUdixLtNQ_2s8132nA';
+const statusBox = document.getElementById('status');
+const loginCard = document.getElementById('login-card');
+const uploadCard = document.getElementById('upload-card');
+const galleryCard = document.getElementById('gallery-card');
+const logoutButton = document.getElementById('logout');
+let supabase = null;
+const setStatus = (message) => statusBox.textContent = message;
+
+if (SUPABASE_URL.startsWith('YOUR_') || SUPABASE_ANON_KEY.startsWith('YOUR_')) {
+  setStatus('Setup needed: create a Supabase project, paste its Project URL and anon/publishable key into admin.html and index.html, then follow README.md. No login/upload will work until setup is complete.');
+} else {
+  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) await showAdmin();
+}
+
+document.getElementById('login-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!supabase) return setStatus('Finish Supabase setup first. See README.md.');
+  setStatus('Signing in…');
+  const { error } = await supabase.auth.signInWithPassword({
+    email: document.getElementById('email').value.trim(),
+    password: document.getElementById('password').value
+  });
+  if (error) return setStatus('Sign-in failed: ' + error.message);
+  await showAdmin();
+});
+
+logoutButton.addEventListener('click', async () => {
+  if (supabase) await supabase.auth.signOut();
+  uploadCard.classList.add('hidden'); galleryCard.classList.add('hidden');
+  logoutButton.hidden = true; loginCard.classList.remove('hidden');
+  setStatus('Signed out.');
+});
+
+async function showAdmin() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return setStatus('Please sign in.');
+  // RLS policies are the real security boundary. The admin UI is shown after sign-in,
+  // but only the authorized admin UUID can write/delete through Supabase.
+  loginCard.classList.add('hidden'); uploadCard.classList.remove('hidden');
+  galleryCard.classList.remove('hidden'); logoutButton.hidden = false;
+  setStatus('Signed in as ' + user.email + '. Loading gallery…');
+  await refreshGallery();
+}
+
+document.getElementById('upload-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!supabase) return;
+  const file = document.getElementById('file').files[0];
+  if (!file) return setStatus('Choose an image first.');
+  if (!['image/jpeg','image/png','image/webp'].includes(file.type)) return setStatus('Please choose a JPG, PNG, or WebP image.');
+  if (file.size > 8 * 1024 * 1024) return setStatus('Image is too large. Please use an image under 8 MB.');
+  const title = document.getElementById('title').value.trim();
+  const category = document.getElementById('category').value.trim() || 'Photography';
+  const safeName = file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'photo';
+  const path = `${crypto.randomUUID()}-${safeName}`;
+  setStatus('Uploading image…');
+  const { error: uploadError } = await supabase.storage.from('photos').upload(path, file, { contentType: file.type, upsert: false });
+  if (uploadError) return setStatus('Upload failed: ' + uploadError.message);
+  const { error: rowError } = await supabase.from('gallery_photos').insert({ title, category, image_path: path });
+  if (rowError) {
+    await supabase.storage.from('photos').remove([path]);
+    return setStatus('Could not save gallery record: ' + rowError.message);
+  }
+  document.getElementById('upload-form').reset();
+  setStatus('Photo uploaded successfully.');
+  await refreshGallery();
+});
+
+async function refreshGallery() {
+  const { data, error } = await supabase.from('gallery_photos').select('id,title,category,image_path,created_at').order('created_at', { ascending: false });
+  if (error) return setStatus('Could not load photos: ' + error.message);
+  const list = document.getElementById('photo-list');
+  list.replaceChildren();
+  if (!data.length) { list.textContent = 'No photos uploaded yet.'; return; }
+  for (const item of data) {
+    const { data: publicData } = supabase.storage.from('photos').getPublicUrl(item.image_path);
+    const row = document.createElement('div'); row.className = 'photo';
+    const img = document.createElement('img'); img.src = publicData.publicUrl; img.alt = '';
+    const info = document.createElement('div'); info.className = 'photo-info';
+    const title = document.createElement('strong'); title.textContent = item.title;
+    const category = document.createElement('small'); category.textContent = item.category || 'Photography';
+    info.append(title, category);
+    const del = document.createElement('button'); del.className = 'danger'; del.textContent = 'Delete';
+    del.addEventListener('click', async () => {
+      if (!confirm(`Delete “${item.title}”? This cannot be undone.`)) return;
+      setStatus('Deleting photo…');
+      const { error: rowError } = await supabase.from('gallery_photos').delete().eq('id', item.id);
+      if (rowError) return setStatus('Delete failed: ' + rowError.message);
+      const { error: fileError } = await supabase.storage.from('photos').remove([item.image_path]);
+      if (fileError) return setStatus('Gallery entry deleted, but image cleanup failed: ' + fileError.message);
+      setStatus('Photo deleted.');
+      await refreshGallery();
+    });
+    row.append(img, info, del); list.append(row);
+  }
+}
+</script>
+</body></html>
